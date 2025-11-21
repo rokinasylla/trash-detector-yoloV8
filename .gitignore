@@ -1,0 +1,9 @@
+best.pt
+*.pt
+venv/
+myenv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
