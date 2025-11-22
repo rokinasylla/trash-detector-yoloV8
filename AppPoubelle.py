@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 from ultralytics import YOLO
 from PIL import Image
 import cv2
@@ -9,8 +8,6 @@ import os
 from pathlib import Path
 import time
 import gdown
-from io import BytesIO
-import threading
 
 # Configuration de la page
 st.set_page_config(
@@ -51,132 +48,45 @@ st.markdown("""
         color: white;
         margin: 10px 0;
     }
-    .live-badge {
-        background: #ff0000;
+    .download-section {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 20px;
+        border-radius: 10px;
         color: white;
-        padding: 5px 15px;
-        border-radius: 20px;
-        font-weight: bold;
-        animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
+        margin: 20px 0;
+        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ========== CONFIGURATION DU MODÈLE ==========
+# ⚠️ IMPORTANT: Remplacez cette URL par votre lien Google Drive
 MODEL_GDRIVE_URL = "https://drive.google.com/uc?export=download&id=1jfH0da0ALkH7qPW0ZyYY5MIC_NfIIBrq"
 MODEL_PATH = "best.pt"
-
-# Configuration WebRTC
-RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-)
 
 # ========== FONCTION DE TÉLÉCHARGEMENT DU MODÈLE ==========
 @st.cache_resource
 def download_and_load_model():
     """Télécharge le modèle depuis Google Drive et le charge"""
     try:
+        # Vérifier si le modèle existe déjà
         if not os.path.exists(MODEL_PATH):
             st.info("📥 Téléchargement du modèle... (première utilisation)")
+            
+            # Télécharger depuis Google Drive
             gdown.download(MODEL_GDRIVE_URL, MODEL_PATH, quiet=False)
             
             if not os.path.exists(MODEL_PATH):
-                st.error("❌ Échec du téléchargement du modèle")
+                st.error("❌ Échec du téléchargement du modèle depuis Google Drive")
                 return None
         
+        # Charger le modèle YOLO
         model = YOLO(MODEL_PATH)
         return model
     
     except Exception as e:
         st.error(f"❌ Erreur lors du chargement du modèle: {str(e)}")
         return None
-
-# ========== CLASSE VIDEO PROCESSOR POUR WEBRTC ==========
-class YOLOVideoProcessor(VideoProcessorBase):
-    """Processeur vidéo pour la détection YOLOv8 en temps réel"""
-    
-    def __init__(self):
-        self.model = None
-        self.confidence = 0.5
-        self.iou_threshold = 0.45
-        self.frame_count = 0
-        self.detection_count = 0
-        self.fps_list = []
-        self.last_time = time.time()
-        self.lock = threading.Lock()
-    
-    def set_model(self, model):
-        """Définir le modèle YOLO"""
-        with self.lock:
-            self.model = model
-    
-    def set_confidence(self, confidence):
-        """Définir le seuil de confiance"""
-        with self.lock:
-            self.confidence = confidence
-    
-    def set_iou(self, iou):
-        """Définir le seuil IoU"""
-        with self.lock:
-            self.iou_threshold = iou
-    
-    def recv(self, frame):
-        """Traiter chaque frame de la webcam"""
-        img = frame.to_ndarray(format="bgr24")
-        
-        with self.lock:
-            if self.model is None:
-                return frame
-            
-            try:
-                # Calculer le FPS
-                current_time = time.time()
-                fps = 1 / (current_time - self.last_time) if (current_time - self.last_time) > 0 else 0
-                self.last_time = current_time
-                self.fps_list.append(fps)
-                if len(self.fps_list) > 30:
-                    self.fps_list.pop(0)
-                avg_fps = np.mean(self.fps_list)
-                
-                # Détection YOLOv8
-                results = self.model.predict(
-                    img,
-                    conf=self.confidence,
-                    iou=self.iou_threshold,
-                    verbose=False
-                )
-                
-                # Annoter l'image
-                annotated_img = results[0].plot()
-                
-                # Compter les détections
-                num_detections = len(results[0].boxes)
-                self.frame_count += 1
-                self.detection_count += num_detections
-                
-                # Ajouter des informations sur l'image
-                cv2.putText(annotated_img, f"FPS: {avg_fps:.1f}", 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                
-                cv2.putText(annotated_img, f"Detections: {num_detections}", 
-                           (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                
-                # Badge LIVE
-                cv2.rectangle(annotated_img, (10, 80), (100, 110), (0, 0, 255), -1)
-                cv2.putText(annotated_img, "LIVE", 
-                           (25, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                
-                return frame.from_ndarray(annotated_img, format="bgr24")
-                
-            except Exception as e:
-                # En cas d'erreur, afficher l'image originale
-                cv2.putText(img, f"Error: {str(e)}", 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                return frame.from_ndarray(img, format="bgr24")
 
 # ========== CHARGEMENT AUTOMATIQUE DU MODÈLE ==========
 if 'model' not in st.session_state or st.session_state.model is None:
@@ -189,7 +99,7 @@ if 'model' not in st.session_state or st.session_state.model is None:
 
 # Titre principal
 st.markdown('<p class="main-header">🗑️ Détecteur de Poubelles YOLOv8</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Détection en temps réel avec caméra</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Détection automatique - Pleines ou Vides</p>', unsafe_allow_html=True)
 
 # Message de statut du modèle
 if st.session_state.model_loaded:
@@ -198,7 +108,7 @@ else:
     st.error("❌ Impossible de charger le modèle. Veuillez vérifier la configuration.")
     st.stop()
 
-# Sidebar - Configuration
+# Sidebar - Configuration et Téléchargement
 with st.sidebar:
     st.header("⚙️ Configuration")
     
@@ -214,15 +124,62 @@ with st.sidebar:
     
     # SECTION TÉLÉCHARGEMENT DU MODÈLE
     st.markdown("### 📥 Télécharger le Modèle")
+    st.info("Vous pouvez télécharger notre modèle pour l'utiliser hors ligne ou l'intégrer dans votre propre application.")
+    
     if os.path.exists(MODEL_PATH):
         with open(MODEL_PATH, "rb") as file:
-            st.download_button(
+            btn = st.download_button(
                 label="⬇️ Télécharger best.pt",
                 data=file,
                 file_name="best.pt",
                 mime="application/octet-stream",
                 use_container_width=True
             )
+            if btn:
+                st.success("✅ Téléchargement lancé!")
+    else:
+        st.warning("⚠️ Modèle non disponible pour le téléchargement")
+    
+    # Informations sur l'utilisation du modèle
+    with st.expander("ℹ️ Comment utiliser le modèle téléchargé"):
+        st.markdown("""
+        ### Utilisation en Python:
+        
+        ```python
+        from ultralytics import YOLO
+        
+        # Charger le modèle
+        model = YOLO('best.pt')
+        
+        # Prédiction sur une image
+        results = model.predict('image.jpg')
+        
+        # Afficher les résultats
+        results[0].show()
+        ```
+        
+        ### Détection vidéo:
+        
+        ```python
+        model = YOLO('best.pt')
+        results = model.predict('video.mp4', save=True)
+        ```
+        
+        ### Webcam en temps réel:
+        
+        ```python
+        import cv2
+        model = YOLO('best.pt')
+        cap = cv2.VideoCapture(0)
+        
+        while True:
+            ret, frame = cap.read()
+            results = model.predict(frame)
+            cv2.imshow('Detection', results[0].plot())
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        ```
+        """)
     
     st.markdown("---")
     
@@ -253,113 +210,10 @@ with st.sidebar:
     box_thickness = st.slider("Épaisseur des boîtes", 1, 5, 2)
 
 # Tabs principales
-tab1, tab2, tab3, tab4 = st.tabs(["📹 Caméra Temps Réel", "📸 Images", "🎥 Vidéos", "ℹ️ À Propos"])
+tab1, tab2, tab3 = st.tabs(["📸 Images", "🎥 Vidéos", "ℹ️ À Propos"])
 
-# ========== TAB 1: WEBCAM TEMPS RÉEL ==========
+# ========== TAB 1: DETECTION SUR IMAGES ==========
 with tab1:
-    st.header("📹 Détection en Temps Réel")
-    
-    st.markdown("""
-    <div class="success-box">
-        <h3>🎥 Webcam en Direct</h3>
-        <p>Activez votre webcam pour une détection en temps réel!</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown("### 📷 Flux Vidéo")
-        
-        # Créer le contexte WebRTC
-        webrtc_ctx = webrtc_streamer(
-            key="yolo-detection",
-            video_processor_factory=YOLOVideoProcessor,
-            rtc_configuration=RTC_CONFIGURATION,
-            media_stream_constraints={
-                "video": {
-                    "width": {"ideal": 1280},
-                    "height": {"ideal": 720}
-                },
-                "audio": False
-            },
-            async_processing=True,
-        )
-        
-        # Configurer le modèle dans le processor
-        if webrtc_ctx.video_processor:
-            webrtc_ctx.video_processor.set_model(st.session_state.model)
-            webrtc_ctx.video_processor.set_confidence(confidence)
-            webrtc_ctx.video_processor.set_iou(iou_threshold)
-    
-    with col2:
-        st.markdown("### 📊 Statistiques")
-        
-        if webrtc_ctx.video_processor:
-            stats_placeholder = st.empty()
-            
-            # Afficher les statistiques en temps réel
-            if webrtc_ctx.state.playing:
-                st.markdown('<p class="live-badge">🔴 EN DIRECT</p>', unsafe_allow_html=True)
-                
-                with stats_placeholder.container():
-                    processor = webrtc_ctx.video_processor
-                    
-                    st.metric("Frames traités", processor.frame_count)
-                    st.metric("Détections totales", processor.detection_count)
-                    
-                    if processor.frame_count > 0:
-                        avg_detections = processor.detection_count / processor.frame_count
-                        st.metric("Moyenne/frame", f"{avg_detections:.2f}")
-                    
-                    if len(processor.fps_list) > 0:
-                        st.metric("FPS moyen", f"{np.mean(processor.fps_list):.1f}")
-            else:
-                st.info("▶️ Cliquez sur START pour commencer")
-        
-        st.markdown("---")
-        
-        st.markdown("### ⚙️ Contrôles")
-        st.info("""
-        **Instructions:**
-        1. Cliquez sur **START**
-        2. Autorisez l'accès à la caméra
-        3. Positionnez la poubelle devant la caméra
-        4. Les détections s'affichent en temps réel!
-        
-        **Arrêter:** Cliquez sur **STOP**
-        """)
-    
-    st.markdown("---")
-    
-    # Informations supplémentaires
-    with st.expander("💡 Conseils pour une meilleure détection"):
-        st.markdown("""
-        ### 📌 Pour de meilleurs résultats:
-        
-        1. **Éclairage** 💡
-           - Assurez un bon éclairage
-           - Évitez les contre-jours
-        
-        2. **Distance** 📏
-           - Gardez la poubelle à 1-3 mètres
-           - Cadrez entièrement l'objet
-        
-        3. **Stabilité** 🎯
-           - Gardez la caméra stable
-           - Évitez les mouvements brusques
-        
-        4. **Angle** 📐
-           - Vue frontale ou légèrement en hauteur
-           - Évitez les angles trop obliques
-        
-        5. **Paramètres** ⚙️
-           - Ajustez la confiance si trop/pas assez de détections
-           - Réduisez l'IoU si détections dupliquées
-        """)
-
-# ========== TAB 2: DETECTION SUR IMAGES ==========
-with tab2:
     st.header("📸 Détection sur Images")
     
     col1, col2 = st.columns(2)
@@ -382,8 +236,10 @@ with tab2:
         if uploaded_image is not None:
             try:
                 with st.spinner("🔍 Analyse en cours..."):
+                    # Convertir en array numpy
                     img_array = np.array(image)
                     
+                    # Détection
                     results = st.session_state.model.predict(
                         img_array,
                         conf=confidence,
@@ -391,6 +247,7 @@ with tab2:
                         verbose=False
                     )
                     
+                    # Image annotée
                     annotated = results[0].plot(
                         line_width=box_thickness,
                         labels=show_labels,
@@ -400,6 +257,7 @@ with tab2:
                     
                     st.image(annotated_rgb, caption="Détections", use_container_width=True)
                     
+                    # Statistiques
                     boxes = results[0].boxes
                     num_detections = len(boxes)
                     
@@ -410,12 +268,15 @@ with tab2:
                     </div>
                     """, unsafe_allow_html=True)
                     
+                    # Détails des détections
                     if num_detections > 0:
                         with st.expander("📊 Détails des détections"):
                             for i, box in enumerate(boxes):
                                 cls = int(box.cls[0])
                                 conf_val = float(box.conf[0])
                                 label = st.session_state.model.names[cls]
+                                
+                                # Coordonnées de la boîte
                                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                                 
                                 st.write(f"**Objet {i+1}:**")
@@ -423,6 +284,9 @@ with tab2:
                                 st.write(f"  - Confiance: {conf_val:.2%}")
                                 st.write(f"  - Position: ({int(x1)}, {int(y1)}) → ({int(x2)}, {int(y2)})")
                                 st.markdown("---")
+                        
+                        # Télécharger l'image annotée
+                        from io import BytesIO
                         
                         result_img = Image.fromarray(annotated_rgb)
                         buf = BytesIO()
@@ -442,8 +306,8 @@ with tab2:
         else:
             st.info("👆 Uploadez une image pour commencer la détection")
 
-# ========== TAB 3: DETECTION SUR VIDEOS ==========
-with tab3:
+# ========== TAB 2: DETECTION SUR VIDEOS ==========
+with tab2:
     st.header("🎥 Détection sur Vidéos")
     
     uploaded_video = st.file_uploader(
@@ -453,6 +317,7 @@ with tab3:
     )
     
     if uploaded_video is not None:
+        # Sauvegarder la vidéo temporairement
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_video.read())
         tfile.close()
@@ -469,8 +334,10 @@ with tab3:
             
             if st.button("▶️ Lancer la détection", use_container_width=True, type="primary"):
                 try:
+                    # Ouvrir la vidéo
                     cap = cv2.VideoCapture(video_path)
                     
+                    # Propriétés de la vidéo
                     fps = int(cap.get(cv2.CAP_PROP_FPS))
                     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -478,10 +345,12 @@ with tab3:
                     
                     st.info(f"📹 Vidéo: {width}x{height} @ {fps} FPS - {total_frames} frames")
                     
+                    # Fichier de sortie
                     output_path = tempfile.mktemp(suffix='.mp4')
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                     
+                    # Barre de progression
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     frame_placeholder = st.empty()
@@ -495,6 +364,7 @@ with tab3:
                         if not ret:
                             break
                         
+                        # Détection sur le frame
                         results = st.session_state.model.predict(
                             frame,
                             conf=confidence,
@@ -502,17 +372,21 @@ with tab3:
                             verbose=False
                         )
                         
+                        # Annoter le frame
                         annotated_frame = results[0].plot(
                             line_width=box_thickness,
                             labels=show_labels,
                             conf=show_conf
                         )
                         
+                        # Sauvegarder
                         out.write(annotated_frame)
                         
+                        # Statistiques
                         num_detections = len(results[0].boxes)
                         detection_stats.append(num_detections)
                         
+                        # Mise à jour de l'affichage (tous les 10 frames)
                         frame_count += 1
                         if frame_count % 10 == 0:
                             progress = frame_count / total_frames
@@ -528,9 +402,11 @@ with tab3:
                                 f"ETA: {eta:.0f}s"
                             )
                             
+                            # Afficher le frame actuel
                             frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                             frame_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
                     
+                    # Libérer les ressources
                     cap.release()
                     out.release()
                     
@@ -538,8 +414,10 @@ with tab3:
                     processing_time = time.time() - start_time
                     status_text.text(f"✅ Traitement terminé en {processing_time:.1f}s!")
                     
+                    # Afficher la vidéo traitée
                     st.success("🎉 Détection terminée!")
                     
+                    # Lire le fichier vidéo traité
                     with open(output_path, 'rb') as video_file:
                         video_bytes = video_file.read()
                     
@@ -554,6 +432,7 @@ with tab3:
                     
                     st.video(video_bytes)
                     
+                    # Statistiques globales
                     if detection_stats:
                         avg_detections = np.mean(detection_stats)
                         max_detections = np.max(detection_stats)
@@ -584,20 +463,23 @@ with tab3:
                             </div>
                             """, unsafe_allow_html=True)
                     
+                    # Nettoyer les fichiers temporaires
                     try:
                         cap.release()
-                        time.sleep(0.5)
+                        time.sleep(0.5)  # Attendre un peu
                         if os.path.exists(video_path):
                             os.unlink(video_path)
                         if os.path.exists(output_path):
                             os.unlink(output_path)
-                    except:
+                    except Exception as cleanup_error:
+                        # Ignorer les erreurs de nettoyage
                         pass
                     
                 except Exception as e:
                     st.error(f"❌ Erreur: {str(e)}")
                     if 'cap' in locals():
                         cap.release()
+                    # Nettoyer en cas d'erreur
                     try:
                         if 'video_path' in locals() and os.path.exists(video_path):
                             os.unlink(video_path)
@@ -606,17 +488,16 @@ with tab3:
     else:
         st.info("👆 Uploadez une vidéo pour commencer")
 
-# ========== TAB 4: À PROPOS ==========
-with tab4:
+# ========== TAB 3: À PROPOS ==========
+with tab3:
     st.header("ℹ️ À Propos de l'Application")
     
     st.markdown("""
     ### 🎯 Objectif
     Cette application utilise l'intelligence artificielle (YOLOv8) pour détecter automatiquement 
-    si les poubelles sont **pleines** ou **vides**.
+    si les poubelles sont **pleines** ou **vides** sur des images et vidéos.
     
     ### 🚀 Fonctionnalités
-    - ✅ **Détection en temps réel via webcam** (NOUVEAU!)
     - ✅ Détection instantanée sur images
     - ✅ Traitement de vidéos complètes
     - ✅ Téléchargement des résultats annotés
@@ -626,16 +507,91 @@ with tab4:
     ### 🛠️ Technologies Utilisées
     - **YOLOv8** (Ultralytics) - Détection d'objets
     - **Streamlit** - Interface web
-    - **Streamlit-WebRTC** - Streaming vidéo en temps réel
     - **OpenCV** - Traitement vidéo
     - **Python** - Langage de programmation
     """)
     
     st.markdown("---")
+    
+    st.markdown("""
+    ### 📥 Télécharger le Modèle
+    
+    Vous pouvez télécharger notre modèle entraîné depuis la **barre latérale** (Sidebar) 
+    pour l'utiliser dans vos propres projets Python.
+    
+    #### Cas d'usage :
+    - 🔬 Recherche et développement
+    - 📱 Intégration dans une application mobile
+    - 🖥️ Utilisation hors ligne
+    - 🎓 Projets éducatifs
+    - 🏭 Déploiement en production
+    """)
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### 📊 Performance du Modèle
+        
+        Le modèle a été entraîné sur un dataset de poubelles avec:
+        - Images d'entraînement diversifiées
+        - Différents angles et éclairages
+        - Multiples types de poubelles
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### 🎓 Comment Utiliser
+        
+        1. Choisissez l'onglet **Images** ou **Vidéos**
+        2. Uploadez votre fichier
+        3. Ajustez les paramètres si nécessaire
+        4. Visualisez les résultats
+        5. Téléchargez les fichiers annotés
+        """)
+    
+    st.markdown("---")
+    
+    # Documentation technique
+    with st.expander("📚 Documentation Technique"):
+        st.markdown("""
+        ### Architecture du Modèle
+        
+        **YOLOv8** (You Only Look Once version 8) est un modèle de détection d'objets 
+        en temps réel de pointe qui offre:
+        
+        - **Vitesse**: Détection ultra-rapide (> 30 FPS)
+        - **Précision**: Haute performance de détection
+        - **Efficacité**: Optimisé pour CPU et GPU
+        
+        ### Classes Détectées
+        
+        Le modèle peut identifier les classes suivantes:
+        """)
+        
+        if hasattr(st.session_state.model, 'names'):
+            for idx, name in st.session_state.model.names.items():
+                st.write(f"- **Classe {idx}**: {name}")
+        
+        st.markdown("""
+        ### Paramètres de Détection
+        
+        - **Confidence**: Seuil de confiance minimum (0-1)
+        - **IoU (Intersection over Union)**: Seuil pour supprimer les détections dupliquées
+        - **Line Thickness**: Épaisseur des boîtes de détection
+        """)
+    
+    st.markdown("---")
+    
+    st.info("💡 **Astuce**: Pour de meilleurs résultats, utilisez des images bien éclairées et des vidéos stables.")
+    
     st.markdown("""
     <div style='text-align: center; margin-top: 30px; color: #666;'>
         <p><strong>🗑️ Détecteur de Poubelles YOLOv8</strong></p>
         <p>Développé avec ❤️ using Streamlit & Ultralytics YOLO</p>
-        <p><small>Version 2.0 avec WebRTC - 2024</small></p>
+        <p><small>Version 1.0 - 2024</small></p>
     </div>
+
     """, unsafe_allow_html=True)
