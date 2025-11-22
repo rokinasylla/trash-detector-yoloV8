@@ -2,8 +2,9 @@ streamlit==1.51.0
 ultralytics==8.2.34
 opencv-python-headless==4.10.0.84
 pillow==10.4.0
-
+torchaudio==2.5.1
 torch==2.5.1
 torchvision==0.20.0
-gdown==5.2.1
+gdown==5.2.0
+
 
