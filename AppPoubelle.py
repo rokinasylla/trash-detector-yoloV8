@@ -59,12 +59,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ========== CONFIGURATION DU MODÈLE ==========
-# ⚠️ IMPORTANT: Remplacez cette URL par votre lien Google Drive
+#  CONFIGURATION DU MODÈLE
+
 MODEL_GDRIVE_URL = "https://drive.google.com/uc?export=download&id=1jfH0da0ALkH7qPW0ZyYY5MIC_NfIIBrq"
 MODEL_PATH = "best.pt"
 
-# ========== FONCTION DE TÉLÉCHARGEMENT DU MODÈLE ==========
+#  FONCTION DE TÉLÉCHARGEMENT DU MODÈLE 
 @st.cache_resource
 def download_and_load_model():
     """Télécharge le modèle depuis Google Drive et le charge"""
@@ -88,7 +88,7 @@ def download_and_load_model():
         st.error(f"❌ Erreur lors du chargement du modèle: {str(e)}")
         return None
 
-# ========== CHARGEMENT AUTOMATIQUE DU MODÈLE ==========
+# CHARGEMENT AUTOMATIQUE DU MODÈLE
 if 'model' not in st.session_state or st.session_state.model is None:
     with st.spinner("🔄 Chargement du modèle YOLOv8..."):
         st.session_state.model = download_and_load_model()
@@ -212,7 +212,7 @@ with st.sidebar:
 # Tabs principales
 tab1, tab2, tab3 = st.tabs(["📸 Images", "🎥 Vidéos", "ℹ️ À Propos"])
 
-# ========== TAB 1: DETECTION SUR IMAGES ==========
+# TAB 1: DETECTION SUR IMAGE
 with tab1:
     st.header("📸 Détection sur Images")
     
@@ -306,7 +306,7 @@ with tab1:
         else:
             st.info("👆 Uploadez une image pour commencer la détection")
 
-# ========== TAB 2: DETECTION SUR VIDEOS ==========
+#  TAB 2: DETECTION SUR VIDEOS 
 with tab2:
     st.header("🎥 Détection sur Vidéos")
     
@@ -488,7 +488,7 @@ with tab2:
     else:
         st.info("👆 Uploadez une vidéo pour commencer")
 
-# ========== TAB 3: À PROPOS ==========
+# AB 3: À PROPOS 
 with tab3:
     st.header("ℹ️ À Propos de l'Application")
     
@@ -595,3 +595,4 @@ with tab3:
     </div>
 
     """, unsafe_allow_html=True)
+
